@@ -195,3 +195,5 @@ print ('trace', A.invariant[1])
 A.mandel = np.array([[1,1,1,0,0,0],[2,2,1/2.,0,0,0]]).T
 print ('mandel', A.mandel)
 print ('trace', A.invariant[1])
+
+print blabla
