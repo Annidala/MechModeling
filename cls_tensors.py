@@ -2,6 +2,14 @@
 import numpy as np
 from scipy.linalg import logm
 
+# Property that is only computed once. Credits to Victor Couty.
+def lazyproperty(f):
+  @property
+  def wrapper(self,*args,**kwargs):
+    if not hasattr(self,'_'+f.__name__):
+      setattr(self,'_'+f.__name__,f(self,*args,**kwargs))
+    return getattr(self,'_'+f.__name__)
+  return wrapper
 
 def mandel_to_index(tensor):
     """
@@ -71,6 +79,7 @@ def index_to_mandel(tensor):
 
 
 
+
 class Tensors():
     """
     Caution
@@ -86,11 +95,23 @@ class Tensors():
     def __init__(self, values):
         self.values = values
         self.F1, self.F2, self.F3, self.F4, self.F5, self.F6 = self.get_components()
-        self.mandel = self.write_mandel()
-        self.indext = mandel_to_index(self.mandel)
-        self.trace = self.invariant()[1]
-        self.det = self.invariant()[0]
+        self._mandel = self.write_mandel()
+        self.delonnewmandel = ["_indextens", "_invariant", "_inversetens"]
         
+    @property
+    def mandel(self): 
+        return self._mandel
+    
+    @mandel.setter # La méthode ci-dessous sera appelées quand tu attribueras self.mandel à une nouvelle valeur
+    def mandel(self, value):
+        self._mandel = value  # Ne pas oublier de mettre à jour notre valeur "cachée"
+        for attr in self.delonnewmandel:
+            try:
+                delattr(self,attr)
+            except AttributeError:
+                pass
+        #print ('coucou')
+
     def get_components(self):
         """
         The function transforms and stores the dict entries in a sorted list of tensor components
@@ -125,12 +146,21 @@ class Tensors():
         -------
         mand: a 2nd order tensor written in a the 6 dimensional 2nd rank tensor basis. Mandel notation
         """
-        if type((self.F1))==np.float64: # if there's only components for one tensor (ie F1 is of len(1)), the mandel tensor is written in an array of shape (6,1). Adding np.newaxis transforms the usual (6,) in a (6,1)
+        if type((self.F1))==np.float: # if there's only components for one tensor (ie F1 is of len(1)), the mandel tensor is written in an array of shape (6,1). Adding np.newaxis transforms the usual (6,) in a (6,1)
             mand = np.array([self.F1, self.F2, self.F3, self.F4*np.sqrt(2), self.F5*np.sqrt(2), self.F6*np.sqrt(2)])[:, np.newaxis]
         else:
             mand = np.array([self.F1, self.F2, self.F3, self.F4*np.sqrt(2), self.F5*np.sqrt(2), self.F6*np.sqrt(2)])
         return mand
-        
+
+    @lazyproperty
+    def indextens(self):
+        """
+        returns the 2nd order cartesian index tensor (3x3)
+        """
+        return mandel_to_index(self.mandel)
+        #return self.mandel
+
+    @lazyproperty
     def invariant(self):
         """
         Computes the first and third invariants of a symmetric tensor, using numpy function linalg.det and linalg.trace.
@@ -144,18 +174,23 @@ class Tensors():
         det : tensor determinant
         trace: tensor trace
         """
-        det = np.array([np.linalg.det(tens) for tens in self.indext.T]) #mandel tensor is put back to the Cartesian index notation in ordr to compute the determinant.
-        trace =  np.array([np.trace(tens) for tens in self.indext.T]) # same happens with the trace.
+        det = np.array([np.linalg.det(tens) for tens in self.indextens.T]) #mandel tensor is put back to the Cartesian index notation in ordr to compute the determinant.
+        trace =  np.array([np.trace(tens) for tens in self.indextens.T]) # same happens with the trace.
         return det, trace
-        
-    def inverse_tens(self):
+           
+    @lazyproperty
+    def inversetens(self):
         """
         returns the inverse tensor, making use of the numpy function linalg.inv
         (WIP : should return error when the tensor is not invertible)
         """
-        return index_to_mandel(np.array([np.linalg.inv(tens) for tens in self.indext.T]).T)
+        if not self.invariant[0].any():
+            return 'error, tensor is not invertible'
+        else:
+            return index_to_mandel(np.array([np.linalg.inv(tens) for tens in self.indextens.T]).T)
 
-    
+
+
 class StrainTensor(Tensors):
     """
     This class inherits from the Tensors class. 
@@ -167,15 +202,17 @@ class StrainTensor(Tensors):
     """
     def __init__(self, values):
         Tensors.__init__(self, values)
-        self.dev_tens = self.Deviat_Tensor()
+        self.delonnewmandel.extend(['_deviat_tensor', '_egreenlagrange', '_ehencky'])
         
-    def Deviat_Tensor(self):
+    @lazyproperty
+    def deviat_tensor(self):
         """
         returns the deviatoric tensor. This should only be applied to transformation, invertible tensor
         """
-        return 1/(self.invariant()[0]**(1/3.))*self.mandel
+        return 1/(self.invariant[0]**(1/3.))*self.mandel
     
-    def E_GreenLagrange(self, volum = True):
+    @lazyproperty
+    def egreenlagrange(self, volum = True):
         """
         defines the Green Lagrange deformation tensors
         
@@ -190,11 +227,12 @@ class StrainTensor(Tensors):
         if volum :
             tens = self.mandel
         else:
-            tens = self.dev_tens
+            tens = self.deviat_tensor
         E = (0.5*((tens).T- np.array([1,1,1,0,0,0]))).T
         return E
-
-    def E_Hencky(self, volum = True):
+    
+    @lazyproperty
+    def ehencky(self, volum = True):
         '''
         Hencky strain [1], computed from Cauchy Green tensor
                 
@@ -211,7 +249,7 @@ class StrainTensor(Tensors):
         if volum : # test wich version of the Green Cauchy to use
             tens = mandel_to_index(self.mandel)
         else:
-            tens = mandel_to_index(self.dev_tens)
+            tens = mandel_to_index(self.deviat_tensor)
         # tens is written in the Cartesian index notation.
         logC = index_to_mandel(np.array([0.5*logm(t) for t in tens.T]).T)
         # computation of the Hencky strain with the function logm from the scipy.linalg library. In order to use the numpy function, the Cauchy Green left tensor is transformed from the mandel to the cartesian index notation. 

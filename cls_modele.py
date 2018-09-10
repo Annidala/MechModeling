@@ -5,6 +5,7 @@ from scipy.linalg import logm
 from scipy.optimize import fsolve
 import cls_tensors as ct
 
+
 class IncompressibleModels():
     '''
     All models defined in terms of the second Piola Kirchhoff stress 
@@ -39,13 +40,42 @@ class IncompressibleModels():
         '''
         try: 
             C0, C1 = params['C0'], params['C1'] 
-            derivee = (C0 + C1*(self.C.trace -3))*self.C.mandel 
-            p = derivee[2,:]/self.C.inverse_tens()[2,:]
-            S = derivee - p*self.C.inverse_tens()
+            derivee = (C0 + C1*(self.C.invariant[1] -3))*self.C.mandel 
+            p = derivee[2,:]/self.C.inverse_tens[2,:]
+            S = derivee - p*self.C.inverse_tens
             return S
         except:
-            print 'Error : class function requires two parameters (C0 and C1) to run'
-
+            return ('Error : class function requires two parameters (C0 and C1) to run')
+    
+    def St_Venant(self, E = None):
+        """
+        Returns the modeled dual stress computed from a hyperelastic anisotropic kelvin approach, using the Hencky deformation measure.
+        
+        Parameters
+        ----------
+        params: defined when calling the class. Dict keys are {'lh', 'l1', 'l2', 'l3', 'l4', 'l5', 'proj', 'penal'}. 'li' are the kelvin modules, 'proj' contains the kelvin eigentensors and 'penal' is defined to deals with incompressibility
+        
+        Returns
+        -------
+        S: the modeled dual stress tensor written in mandel notation. Shape (6, n) : n is the number of tensors corresponding with the number of deformation tensors in input
+        """
+        lh, l1, l2, l3, l4, l5 , a = self.params['lh'], self.params['l1'], self.params['l2'], self.params['l3'], self.params['l4'], self.params['l5'], self.params['a'] # Kelvin modulus and power order of the law
+        proj = self.params['proj'] # kelvin projectors
+        k = self.params['penal'] # penalisation coefficient for incompressibility
+        coeff = np.array([l1, l2, l3, l4, l5, lh])
+        trC = coeff.sum()
+        kd, kh = coeff/trC, lh/trC
+        if E is None:
+            E = self.C.egreenlagrange
+        Epdev = proj[:-1].dot(E/(self.C.invariant[0]**(1/3.))) # projection of the Green Lagrange deviatoric deformation tensor on the Kelvin deviatoric projectors
+        CCt = np.transpose(np.array([np.tensordot(self.C.mandel[:,i], self.C.inversetens[:,i], axes = 0) for i in range(self.C.mandel.shape[1])]), (1,2,0))
+        dEdev = np.einsum('k,ijk->ijk', self.C.invariant[0]**(-1/3.),(np.eye(6,6) - CCt.T).T)
+        Sdeviat = np.einsum('ik, ijk ->jk', np.sum(coeff[:-1,np.newaxis, np.newaxis]*(Epdev), axis = 0), dEdev)
+        
+        Shydro = k*lh*proj[-1].dot(E)
+        return (Sdeviat.T + Shydro.T).T
+    
+    
     def kelvin_hencky(self, E = None):
         """
         Returns the modeled dual stress computed from a hyperelastic anisotropic kelvin approach, using the Hencky deformation measure.
@@ -66,7 +96,7 @@ class IncompressibleModels():
         kd, kh = coeff/trC, lh/trC
         # definition of the deformation measure
         if E is None:
-            E = self.C.E_Hencky()
+            E = self.C.ehencky
         Ep = proj.dot(E) # projection of the deformation tensor on the Kelvin projectors
         # Computation of the different element of the Kelvin formulation
         sE = np.array([ct.index_to_mandel(np.array([np.linalg.matrix_power(ct.mandel_to_index(tens),2) for tens in Ep[i].T]).T) for i in range(6)]) #computes the square value of the projected deformation
@@ -76,7 +106,7 @@ class IncompressibleModels():
         Sdeviat = (dens_E*derivEPE) # by virtue of the chain rule, the derivation of the strain energy density regardind E
         Shydro = (k*trC*kh*(kh*ePe[-1,:])**a*Ep[-1,:,:]) # the hydrostatic projector is penalised by the coefficient k, chosen >>1 in order to impose incompressibility
         S = (Sdeviat.T + Shydro.T).T # express the modeled stress as the sum over the deviatoric stress and hydrostatic part. 
-        return S
+        return np.absolute(S)
 
     #def kelvin_exp(self, C):
         #lh, l1, l2, l3, l4, l5 , a = self.params['lh'], self.params['l1'], self.params['l2'], self.params['l3'], self.params['l4'], self.params['l5'], self.params['a']
@@ -97,21 +127,24 @@ class IncompressibleModels():
     
     #------------ Resolution functions ----------------
     def costfunc(self, x, uni,  i):
-        C = self.C.mandel[:, i]
-        C[uni] = x
-        E = self.C.E_Hencky()[:,i]
-        Mod = np.absolute(self.model(E[:,np.newaxis]))
+        tens = self.C.mandel[:, i]
+        tens[uni] = x
+        self.C.mandel = self.C.mandel
+        E = self.C.ehencky[:,i]
+        Mod = self.model(E[:,np.newaxis])
         return Mod[uni].reshape(len(uni),)
-        #return E
+
     
     def solver(self):
-        C = self.C.mandel
-        col = np.where((C == 1000) | (C == 1000*np.sqrt(2)))
+        tens = self.C.mandel.copy()
+        col = np.where((tens == 1000) | (tens == 1000*np.sqrt(2)))
         if col[0].size !=0:
-            x = np.zeros((len(np.unique(col[0])), C.shape[1]))
+            x = np.zeros((len(np.unique(col[0])), tens.shape[1]))
             uni = np.unique(col[0])
             x[:,0] =[1 if i<=2 else 0 for i in np.unique(col[0])]
-            for i in range(1,C.shape[1]):
+            for i in range(1,tens.shape[1]):
                 x[:,i] = fsolve(self.costfunc, (x[:,i-1]), args = (uni, i))
-            C[uni,:] = x
+                #print (x[:,i].shape)
+            tens[uni,:] = x
+            self.C.mandel = tens
         return self.model()

@@ -95,7 +95,10 @@ class Tensors(object):
         self.values = values
         self.F1, self.F2, self.F3, self.F4, self.F5, self.F6 = self.get_components()
         self._mandel = self.write_mandel()
-
+        self.indextens = self.indextens()
+        self.invariant = self.invariant()
+        self.inversetens = self.inversetens()
+        
     @property
     def mandel(self): # Pour pouvoir récupérer le tenseur, on a pas besoin de faire grand chose ici, juste retourner notre mandel "caché"
         return self._mandel
@@ -178,16 +181,20 @@ class Tensors(object):
     def inversetens(self):
         """
         returns the inverse tensor, making use of the numpy function linalg.inv
-        (WIP : should return error when the tensor is not invertible)
         """
-        return (np.array([np.linalg.inv(tens) for tens in self.indextens.T]).T)
+        #if self.invariant()[0] == 0:
+            #return 'error, tensor is not invertible'
+        #else:
+        return index_to_mandel(np.array([np.linalg.inv(tens) for tens in self.indextens.T]).T)
     
 C1 = np.linspace(1,9,5)
 A = Tensors({'F1':C1, 'F2':C1, 'F3':1/C1, 'F4': np.zeros_like(C1), 'F5':np.zeros_like(C1), 'F6':np.zeros_like(C1)})
 print ('mandel', A.mandel)
 print ('trace', A.invariant)
 
-A.mandel =np.array([1,1,1,0,0,0])[:,np.newaxis]
+B = Tensors({'F1':C1, 'F2':2*C1, 'F3':1/C1**2, 'F4': np.zeros_like(C1), 'F5':np.zeros_like(C1), 'F6':np.zeros_like(C1)})
+
+A.mandel = B.mandel.copy()
 
 print ('mandel', A.mandel)
 print ('trace', A.invariant)

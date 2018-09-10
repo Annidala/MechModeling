@@ -111,5 +111,5 @@ class KelvinOperators():
                     [0, 0, 0, 0, c, -s],
                     [0, 0, 0, 0, s, c]])
         else:
-            R = 'error, axe should be x, y or z'
+            R = ('error, axe should be x, y or z')
             return R

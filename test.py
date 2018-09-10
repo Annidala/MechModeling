@@ -105,11 +105,11 @@ class Tensors():
         self._mandel = value  # Ne pas oublier de mettre à jour notre valeur "cachée"
         delattr(self, "_indextens")
         delattr(self, "_invariant")
-        #delattr(self, "_inversetens")
+        delattr(self, "_inversetens")
         self._indextens = self.indextens
         self._invariant = self.invariant
         self._inversetens = self.inversetens
-
+        print ('coucou')
 
     def get_components(self):
         """
@@ -183,7 +183,10 @@ class Tensors():
         returns the inverse tensor, making use of the numpy function linalg.inv
         (WIP : should return error when the tensor is not invertible)
         """
-        return (np.array([np.linalg.inv(tens) for tens in self.indextens.T]).T)
+        if not self.invariant[0].any():
+            return 'error, tensor is not invertible'
+        else:
+            return (np.array([np.linalg.inv(tens) for tens in self.indextens.T]).T)
 
 
 
@@ -192,8 +195,10 @@ A = Tensors({'F1':C1, 'F2':C1, 'F3':1/C1, 'F4': np.zeros_like(C1), 'F5':np.zeros
 print ('mandel', A.mandel)
 print ('trace', A.invariant[1])
 
-A.mandel = np.array([[1,1,1,0,0,0],[2,2,1/2.,0,0,0]]).T
+B = Tensors({'F1':C1, 'F2':2*C1, 'F3':1/C1**2, 'F4': np.zeros_like(C1), 'F5':np.zeros_like(C1), 'F6':np.zeros_like(C1)})
+
+A.mandel = B.mandel
 print ('mandel', A.mandel)
 print ('trace', A.invariant[1])
 
-print blabla
+#print blabla
