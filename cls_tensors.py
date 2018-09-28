@@ -79,7 +79,6 @@ def index_to_mandel(tensor):
 
 
 
-
 class Tensors():
     """
     Caution
@@ -110,7 +109,6 @@ class Tensors():
                 delattr(self,attr)
             except AttributeError:
                 pass
-        #print ('coucou')
 
     def get_components(self):
         """
@@ -158,7 +156,6 @@ class Tensors():
         returns the 2nd order cartesian index tensor (3x3)
         """
         return mandel_to_index(self.mandel)
-        #return self.mandel
 
     @lazyproperty
     def invariant(self):
@@ -176,7 +173,7 @@ class Tensors():
         """
         det = np.array([np.linalg.det(tens) for tens in self.indextens.T]) #mandel tensor is put back to the Cartesian index notation in ordr to compute the determinant.
         trace =  np.array([np.trace(tens) for tens in self.indextens.T]) # same happens with the trace.
-        return det, trace
+        return det, trace # rajouter les invariants du tenseur, redéfinir la méthode pour séparer les invariants
            
     @lazyproperty
     def inversetens(self):
@@ -209,10 +206,10 @@ class StrainTensor(Tensors):
         """
         returns the deviatoric tensor. This should only be applied to transformation, invertible tensor
         """
-        return 1/(self.invariant[0]**(1/3.))*self.mandel
+        return (self.invariant[0]**(-1/3.))*self.mandel
     
     @lazyproperty
-    def egreenlagrange(self, volum = True):
+    def egreenlagrange(self):
         """
         defines the Green Lagrange deformation tensors
         
@@ -224,15 +221,12 @@ class StrainTensor(Tensors):
         -------
         E: (6,n) the Green-Lagrange tensors in the the mandel notation
         """
-        if volum :
-            tens = self.mandel
-        else:
-            tens = self.deviat_tensor
-        E = (0.5*((tens).T- np.array([1,1,1,0,0,0]))).T
-        return E
+        E = (0.5*((self.mandel).T- np.array([1,1,1,0,0,0]))).T
+        Ed = (0.5*((self.deviat_tensor).T- np.array([1,1,1,0,0,0]))).T # same as above but using the deviatoric cauchy green tensor
+        return E, Ed
     
     @lazyproperty
-    def ehencky(self, volum = True):
+    def ehencky(self):
         '''
         Hencky strain [1], computed from Cauchy Green tensor
                 
@@ -246,11 +240,7 @@ class StrainTensor(Tensors):
         
         [1] Hencky, H. (1928). "Über die Form des Elastizitätsgesetzes bei ideal elastischen Stoffen". Zeitschrift für technische Physik. 9: 215–220
         '''
-        if volum : # test wich version of the Green Cauchy to use
-            tens = mandel_to_index(self.mandel)
-        else:
-            tens = mandel_to_index(self.deviat_tensor)
-        # tens is written in the Cartesian index notation.
-        logC = index_to_mandel(np.array([0.5*logm(t) for t in tens.T]).T)
         # computation of the Hencky strain with the function logm from the scipy.linalg library. In order to use the numpy function, the Cauchy Green left tensor is transformed from the mandel to the cartesian index notation. 
-        return logC
+        logC = index_to_mandel(np.array([0.5*logm(t) for t in mandel_to_index(self.mandel).T]).T)
+        logcd = index_to_mandel(np.array([0.5*logm(t) for t in mandel_to_index(self.deviat_tensor).T]).T) # sams using the deviatoric tensor
+        return logC, logcd

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-class KelvinOperators():
+class FourthOrderOperators():
     """
     The present class returns any 4th rank tensors written in the 6-dimensional second-rank tensor notation [1]
     

@@ -68,13 +68,19 @@ class IncompressibleModels():
 
         if E is None:
             E = self.C.egreenlagrange
-        Epdev = proj[:].dot(E[1]) # projection of the Green Lagrange deviatoric deformation tensor on the Kelvin deviatoric projectors
-        CCt = np.transpose(np.array([1/3.*np.outer(self.C.mandel[:,i], self.C.inversetens[:,i]) for i in range(self.C.mandel.shape[1])]), (1,2,0))
+        Epdev = proj.dot(E[1]) # projection of the Green Lagrange deviatoric deformation tensor on the Kelvin deviatoric projectors
+        CCt = np.transpose(np.array([1/3.*np.outer(self.C.mandel[:,i], self.C.inversetens[:,i]) for i in range(self.C.mandel.shape[1])]), (1,2,0)) #dyadic product of C and transposeC
         dEdev = np.einsum('k,ijk->ijk', self.C.invariant[0]**(-1/3.), (np.eye(6) - CCt.T).T)
         dE = np.sum(coeff[:,np.newaxis, np.newaxis]*Epdev, axis = 0)
-        Sdeviat = np.array([np.dot(dE[:,i], dEdev[:,:,i]) for i in range(self.C.mandel.shape[1])]).T
+        Sdeviat = np.zeros_like(self.C.mandel)
+        for i in range(self.C.mandel.shape[1]):
+            Sdeviat[:,i] = np.dot(dE[:,i], dEdev[:,:,i])
+        
+        #choice of hydrostatic part, dealing with incompressibility
         #Shydro = k*lh*proj[-1].dot(E[0])
         Shydro = k*self.C.invariant[0]*(self.C.invariant[0]-1)*self.C.inversetens
+        #p = Sdeviat/self.C.inversetens[2] #projecteur hydrostatique
+        #Shydro = p*self.C.inversetens
         return (Sdeviat.T + Shydro.T).T
     
     
@@ -100,21 +106,25 @@ class IncompressibleModels():
         if E is None:
             E = self.C.egreenlagrange
         Ed = E[1]
-        Epdev = proj[:-1].dot(Ed) # projection of the Green Lagrange deviatoric deformation tensor on the Kelvin deviatoric projectors
+        Epdev = proj.dot(Ed) # projection of the Green Lagrange deviatoric deformation tensor on the Kelvin deviatoric projectors
         # Computation of the different element of the Kelvin formulation
-        sEd = np.array([ct.index_to_mandel(np.array([np.linalg.matrix_power(ct.mandel_to_index(tens),2) for tens in Epdev[i].T]).T) for i in range(6)]) #computes the square value of the projected deformation
-        ePed = np.array([[np.trace(ct.mandel_to_index(tens)) for tens in sEd[i].T] for i in range(6)]) # computes the trace of the squared Kelvin deformation (sE)
-        dens_E = trC*np.sum(kd[:-1,np.newaxis]*(ePed), axis = 0)**a # derivation of the deviatoric energy density regarding ePe
-        derivEPE = np.sum(kd[:-1,np.newaxis, np.newaxis]*(Epdev), axis = 0)  # derivation ePe regarding E
-        CCt = np.transpose(np.array([np.tensordot(self.C.mandel[:,i], self.C.inversetens[:,i], axes = 0) for i in range(self.C.mandel.shape[1])]), (1,2,0))
-        dEdev = np.einsum('k,ijk->ijk', self.C.invariant[0]**(-1/3.),(Id4t - CCt.T).T)        
-        Sdeviat = np.einsum('', (dens_E*derivEPE), dEdev) # by virtue of the chain rule, the derivation of the strain energy density regardind E
+        ePed = np.zeros_like(self.C.mandel)
+        for i in range(6):
+            sEd = np.array(ct.index_to_mandel(np.array([np.linalg.matrix_power(ct.mandel_to_index(tens),2) for tens in Epdev[i].T]).T)) #computes the square value of the projected deformation
+            ePed[i,:] = np.array([np.trace(ct.mandel_to_index(tens)) for tens in sEd.T]) # computes the trace of the squared Kelvin deformation (sE)
+        dens_E = trC*np.sum(kd[:-1,np.newaxis]*(ePed[:-1]), axis = 0)**a # derivation of the deviatoric energy density regarding ePe
+        derivEPE = np.sum(kd[:-1,np.newaxis, np.newaxis]*(Epdev[:-1]), axis = 0)  # derivation ePe regarding E
+        CCt = np.zeros((6,6, self.C.mandel.shape[1]))
+        for i in range(self.C.mandel.shape[1]):
+            CCt[:,:,i] = np.tensordot(self.C.mandel[:,i], self.C.inversetens[:,i], axes = 0)
+        dEdev = np.einsum('k,ijk->ijk', self.C.invariant[0]**(-1/3.),(np.eye(6) - CCt.T).T)        
+        Sdeviat = np.einsum('ik, ijk ->jk', (dens_E*derivEPE), dEdev) # by virtue of the chain rule, the derivation of the strain energy density regarding E
         
-        sEh = np.array([ct.index_to_mandel(np.array([np.linalg.matrix_power(ct.mandel_to_index(tens),2) for tens in (proj[-1].dot(E[0])[i]).T]).T) for i in range(6)])
-        ePeh = np.array([[np.trace(ct.mandel_to_index(tens)) for tens in sEh[i].T] for i in range(6)])
-        Shydro = (k*trC*kh*(kh*ePed[-1,:])**a*proj[-1].dot(E[0])) # the hydrostatic projector is penalised by the coefficient k, chosen >>1 in order to impose incompressibility
+        sEh = ct.index_to_mandel(np.array([np.linalg.matrix_power(ct.mandel_to_index(tens),2) for tens in (proj[-1].dot(E[0])).T]).T)
+        ePeh = np.array([np.trace(ct.mandel_to_index(tens)) for tens in sEh.T])
+        Shydro = k*trC*kh*(kh*ePeh)**a*(proj[-1].dot(E[0])) # the hydrostatic projector is penalised by the coefficient k, chosen >>1 in order to impose incompressibility
         S = (Sdeviat.T + Shydro.T).T # express the modeled stress as the sum over the deviatoric stress and hydrostatic part. 
-        return np.absolute(S)
+        return S
     
     def kelvin_hencky(self, E = None):
         """
@@ -185,5 +195,5 @@ class IncompressibleModels():
                 y[:,i] = fsolve(self.costfunc, (y[:,i-1]), args = (uni, i))
             tens[uni,:] = y
             self.C.mandel = tens
-            print('coucou')
+        print('Resolution finished gracefully')
         return self.model()
