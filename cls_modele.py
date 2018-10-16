@@ -122,7 +122,8 @@ class IncompressibleModels():
         
         sEh = ct.index_to_mandel(np.array([np.linalg.matrix_power(ct.mandel_to_index(tens),2) for tens in (proj[-1].dot(E[0])).T]).T)
         ePeh = np.array([np.trace(ct.mandel_to_index(tens)) for tens in sEh.T])
-        Shydro = k*trC*kh*(kh*ePeh)**a*(proj[-1].dot(E[0])) # the hydrostatic projector is penalised by the coefficient k, chosen >>1 in order to impose incompressibility
+        #Shydro = k*trC*kh*(kh*ePeh)**a*(proj[-1].dot(E[0])) # the hydrostatic projector is penalised by the coefficient k, chosen >>1 in order to impose incompressibility
+        Shydro = k*self.C.invariant[0]*(self.C.invariant[0]-1)*self.C.inversetens
         S = (Sdeviat.T + Shydro.T).T # express the modeled stress as the sum over the deviatoric stress and hydrostatic part. 
         return S
     
