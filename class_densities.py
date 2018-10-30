@@ -109,7 +109,7 @@ class SymbolicDensities():
     
     def mooney_rivlin(self):
         C1, C2 = self.params['C1'], self.params['C2']
-        W = C1*(sy.trace(self.F)-3) + C2*(self.invariant_2(self) - 3)
+        W = C1*(sy.trace(self.F)-3) + C2*(self.invariant_2() - 3)
         return W
     
     def kelvin_hyperelas_dev(self):
