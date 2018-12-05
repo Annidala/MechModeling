@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from scipy.linalg import logm
+import sympy as sy
 
-# Property that is only computed once. Credits to Victor Couty.
+# Property that is only computed once. All credits (and many thanks) to Victor Couty.
 def lazyproperty(f):
   @property
   def wrapper(self,*args,**kwargs):
@@ -244,3 +245,57 @@ class StrainTensor(Tensors):
         logC = index_to_mandel(np.array([0.5*logm(t) for t in mandel_to_index(self.mandel).T]).T)
         logcd = index_to_mandel(np.array([0.5*logm(t) for t in mandel_to_index(self.deviat_tensor).T]).T) # sams using the deviatoric tensor
         return logC, logcd
+
+
+class SymbolicTensors():
+    def __init__(self, sym = False):
+        self.sym = sym
+        self.c11, self.c22, self.c33, self.c23, self.c13, self.c12, self.c32, self.c31, self.c21 = sy.symbols('c11, c22, c33, c23, c13, c12, c32, c31, c21')
+        self.C = self.make_tensor()
+
+    def make_tensor(self):
+        if self.sym:
+            c = sy.Matrix([self.c11, self.c22, self.c33, self.c23, self.c13, self.c12])
+        else:
+            c = sy.Matrix([[self.c11, self.c12, self.c13],
+              [self.c21, self.c22, self.c23],
+              [self.c31, self.c32, self.c33]])
+        return c
+    
+    def sym_index_tensor(self):
+        C = sy.Matrix([[self.c11, self.c12, self.c13],
+              [self.c12, self.c22, self.c23],
+              [self.c13, self.c23, self.c33]])
+        return C
+    
+    def I1(self):
+        if self.sym:
+            trace = sy.trace(self.sym_index_tensor())
+        else:
+            trace = sy.trace(self.C)
+        return trace
+    
+    def I2(self):
+        if self.sym:
+            I2 = sy.Rational(1,2)*(sy.trace(self.sym_index_tensor())**2 - sy.trace(self.sym_index_tensor()**2))
+        else:
+            I2 = sy.Rational(1,2)*(sy.trace(self.C)**2 - sy.trace(self.C**2))
+        return I2
+    
+    def I3(self):
+        if self.sym:
+            I3 = (self.sym_index_tensor()).det()
+        else:
+            I3 = self.C.det()
+        return I3
+        
+    def inverse(self):
+        if self.sym:
+            inv1 = self.sym_index_tensor().inv('LU')
+            inver = sy.Matrix([inv1[0,0], inv1[1,1], inv1[2,2], inv1[1,2], inv1[2,0], inv1[1,0]])
+        else:
+            inver = self.C.inv('LU')
+        return inver
+    
+    def deviat_tensor(self):
+        return self.I3()**(sy.Rational(-1,3))*self.C

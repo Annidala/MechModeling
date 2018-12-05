@@ -16,7 +16,7 @@ class FourthOrderOperators():
         self.C = C
         self.vap = self.get_projectors()[0]
         self.P1, self.P2, self.P3, self.P4, self.P5, self.Ph = self.get_projectors()[1]
-        self.vap, self.projs = self.get_projectors()
+        self.projs = self.get_projectors()
         self.rot = self.get_rot_tens()
     
     def get_projectors(self):
